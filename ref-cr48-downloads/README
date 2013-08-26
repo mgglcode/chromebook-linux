@@ -1,0 +1,15 @@
+
+
+download-cr48-data.sh
+
+  downloaded the data in 440 seconds in one test
+
+
+verify-cr48-data.sh
+
+  verified the data in 160 seconds in one test
+
+
+download-cr48-kern.sh
+
+  downloaded the data in a few seconds in one test
