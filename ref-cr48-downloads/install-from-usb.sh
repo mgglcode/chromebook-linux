@@ -4,7 +4,7 @@
 #install-data.sh derived from install-ubuntu-1204-9.sh
 #to be run on an acer c7 installing from a usb stick data/ directory.
 
-cfg_install_to=/dev/mmc
+cfg_install_to=/dev/mmcblk0
 cfg_install_from=/dev/sdb1
 
 fw_type="`crossystem mainfw_type`"
@@ -89,7 +89,7 @@ if [ ! -d /tmp/usb_files ]; then
     mkdir /tmp/usb_files
 fi
 
-umount /dev/sdb1 /tmp/usb_files > /dev/null 2>&1
+umount /dev/sdb1               > /dev/null 2>&1
 mount /dev/sdb1 /tmp/usb_files > /dev/null 2>&1
 
 if [ ! -d /tmp/usb_files/ubuntu ]; then 

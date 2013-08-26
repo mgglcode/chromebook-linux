@@ -13,3 +13,9 @@ verify-cr48-data.sh
 download-cr48-kern.sh
 
   downloaded the data in a few seconds in one test
+
+
+verify-cr48-kern.sh
+
+  verified the kernel in a few seconds in one test
+
