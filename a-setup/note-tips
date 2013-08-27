@@ -17,3 +17,8 @@ $ git gc --prune=now
 $ git gc --aggressive --prune=now
 
 
+Avoid RPC error in bit push:
+==============================
+$ git config http.postBuffer 524288000
+
+
