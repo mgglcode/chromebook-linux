@@ -1,3 +1,6 @@
+#!/bin/bash
+#make sure it runs from bash on chronos 
+
 # fw_type will always be developer for Mario.
 # Alex and ZGB need the developer BIOS installed though.
 
@@ -54,8 +57,8 @@ fi
 
 setterm -blank 0
 
-if [ "$install_to" != "" ]; then
-  target_disk=$install_to
+if [ "$cfg_install_to" != "" ]; then
+  target_disk=$cfg_install_to
   echo "Got ${target_disk} as target drive"
   echo ""
   echo "WARNING! All data on this device will be wiped out! Continue at your own risk!"
@@ -78,19 +81,20 @@ else
     exit
 fi
 
-if [ ! -d /mnt/stateful_partition/ubuntu ]; then
-  mkdir /mnt/stateful_partition/ubuntu
+target_repo=/mnt/stateful_partition/ubuntu
+if [ ! -d $target_repo ]; then
+  mkdir $target_repo
 fi
 
-cd /mnt/stateful_partition/ubuntu
+cd $target_repo
 
 # try mounting a USB / SD Card if it's there...
 if [ ! -d /tmp/usb_files ]; then
     mkdir /tmp/usb_files
 fi
 
-umount /dev/sdb1               > /dev/null 2>&1
-mount /dev/sdb1 /tmp/usb_files > /dev/null 2>&1
+umount /dev/sdb1                > /dev/null 2>&1
+mount  /dev/sdb1 /tmp/usb_files > /dev/null 2>&1
 
 if [ ! -d /tmp/usb_files/ubuntu ]; then 
     echo "ERROR: no ubuntu dir on usb drive /dev/sdb1"
@@ -98,9 +102,13 @@ if [ ! -d /tmp/usb_files/ubuntu ]; then
 fi
 
 # Copy /tmp/usb_files/ubuntu (.sha1 and foo.6 files) to SSD if they're there
-if [ -d /tmp/usb_files/ubuntu/data ]; then
-    echo "Copying all ubuntu/data/*.sha1 files to stateful _partition/ubuntu/"
-    cp -rf /tmp/usb_files/ubuntu/data/* /mnt/stateful_partition/ubuntu/
+if [ -d /tmp/usb_files/ubuntu ]; then
+    if [ ! -d $target_repo/data ]; then
+        echo "Copying all ubuntu/* files to stateful_partition/ubuntu/"
+        cp -rf /tmp/usb_files/ubuntu/* $target_repo/
+    else 
+        echo "Using ubuntu/* files in stateful_partition/ubuntu/"
+    fi
 else
     echo "ERROR: no ubuntu/data dir on usb drive /dev/sdb1"
     exit 1
@@ -115,7 +123,12 @@ else
 fi
 
 echo "Target Kernel Partition: $target_kern  Target Root FS: ${target_rootfs}"
+if grep mmcblk /proc/mounts ; then
+    echo "ERROR: mmcblk mounted"
+    exit 1
+fi
 
+debug_skip_rootfs=1
 # Download and copy ubuntu root filesystem, keep track of successful parts so we can resume
 SEEK=0
 FILESIZE=102400
@@ -125,12 +138,16 @@ for one in a b; do
     if [ "$one$two" = "bz" ]; then
       FILESIZE=20480
     fi
+    if [ $debug_skip_rootfs -ne 0 ]; then 
+        echo "DEBUG: Skip  $one  $two "
+        continue
+    fi
     FILENAME="ubuntu-1204.bin$one$two.bz2"
-      if [ ! -f /mnt/stateful_partition/ubuntu/$FILENAME.sha1 ]; then
+      if [ ! -f $target_repo/data/$FILENAME.sha1 ]; then
           echo "ERROR: no file $FILENAME.sha1"
           exit 1
       fi
-      correct_sha1=`cat $FILENAME.sha1 | awk '{print $1}'`
+      correct_sha1=`cat $target_repo/data/$FILENAME.sha1 | awk '{print $1}'`
       correct_sha1_length="${#correct_sha1}"
       if [ "$correct_sha1_length" -eq "40" ]; then
         correct_sha1_is_valid=1
@@ -146,11 +163,11 @@ for one in a b; do
     else
         echo -e "$FILENAME needs to be written because it's $current_sha1 not $correct_sha1"
     fi
-    if [ -f /tmp/usb_files/ubuntu/data/$FILENAME ]; then
+    if [ -f $target_repo/data/$FILENAME ]; then
         echo -e "Found $FILENAME on flash drive. Using it..."
-        get_cmd="cat /tmp/usb_files/$FILENAME"
+        get_cmd="cat $target_repo/data/$FILENAME"
     else
-          echo "ERROR: no file $FILENAME.sha1"
+          echo "ERROR: no file $FILENAME"
           exit 1
     fi
         $get_cmd | bunzip2 -c | dd bs=1024 seek=$SEEK of=${target_rootfs} status=noxfer > /dev/null 2>&1
@@ -174,9 +191,12 @@ mount -t ext4 ${target_rootfs} /tmp/urfs
 if [ ! -d /tmp/urfs/usr/bin ]; then
     echo -e "\nError mounted usb with no /usr/bin\n\n"
     exit 1
+else
+    echo "Mounted  ${target_rootfs}  to  /tmp/urfs"
 fi
 cp /usr/bin/cgpt /tmp/urfs/usr/bin/
 chmod a+rx /tmp/urfs/usr/bin/cgpt
+echo "Copied  cgpt"
 
 echo "console=tty1 debug verbose root=${target_rootfs} rootwait rw lsm.module_locking=0" > kernel-config
 if [ "$chromebook_arch" = "x86_64" ]  # We'll use the official Chrome OS kernel if it's x64
@@ -209,16 +229,17 @@ else # Otherwise we'll download a custom-built non-official Chromium OS kernel
   fi
   #wget http://cr-48-ubuntu.googlecode.com/files/$model-x64-modules.tar.bz2
   #wget http://cr-48-ubuntu.googlecode.com/files/$model-x64-kernel-partition.bz2
-    if [ -f /tmp/usb_files/ubuntu/data/$model-x64-kernel-partition.bz2.tar.bz2 ]; then
-        echo -e "Using zbg kernel on flash drive..."
-        cp /tmp/usb_files/ubuntu/data/$model-x64-kernel-partition.bz2 .
+    echo "Check kernel"
+    if [ -f $target_repo/data/$model-x64-kernel-partition.bz2 ]; then
+        echo -e "Using $model kernel on flash drive..."
+        cp $target_repo/data/$model-x64-kernel-partition.bz2 .
     else
-          echo "ERROR: no kernel file"
+          echo "ERROR: no kernel file for model $model"
           exit 1
     fi
-    if [ -f /tmp/usb_files/ubuntu/data/$model-x64-modules.tar.bz2 ]; then
-        echo -e "Using zbg modules on flash drive..."
-        cp /tmp/usb_files/ubuntu/data/$model-x64-modules.tar.bz2 .
+    if [ -f $target_repo/data/$model-x64-modules.tar.bz2 ]; then
+        echo -e "Using $model modules on flash drive..."
+        cp $target_repo/data/$model-x64-modules.tar.bz2 .
     else
           echo "ERROR: no modules file"
           exit 1
@@ -242,11 +263,14 @@ dd if=$use_kernfs of=${target_kern}
 
 
 # Resize sda7 in order to "grow" filesystem to user's selected size
+echo "Resize ${target_rootfs}"
 e2fsck -f ${target_rootfs}
 resize2fs -p ${target_rootfs}
 
 #Set Ubuntu partition as top priority for next boot
+echo "Set cgpt for disk ${target_disk}"
 cgpt add -i 6 -P 5 -T 1 ${target_disk}
 
 # reboot
-reboot
+echo "reboot now"
+##reboot

@@ -12,7 +12,7 @@ fi
 
 starttime=`date +%s`; startdate=`date`
 
-model=zgb
+model=mario
 FILE1=$model-x64-modules.tar.bz2
 
   correct_sha1_11=`cat data/$FILE1.sha1     | awk '{print $1}'`

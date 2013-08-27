@@ -10,7 +10,7 @@ if [ ! -d data ]; then mkdir data; fi
 
 starttime=`date +%s`; startdate=`date`
 
-model=zgb
+model=mario
 FILE1=$model-x64-modules.tar.bz2
 
   wget -O data/$FILE1 $baselink/$FILE1
