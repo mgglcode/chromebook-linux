@@ -11,9 +11,23 @@ cfg_install_to=/dev/mmcblk0
 cfg_install_from=/dev/sdb1
 
 debug_skip_copy=1    #1 skip copy from usb to /mnt/stateful_partition/ubuntu
-debug_skip_rootfs=1  #1 skip writing rootfs partition from files
-debug_skip_modules=1 #1 skip extracting module files
+debug_skip_rootfs=0  #1 skip writing rootfs partition from files
+debug_skip_modules=0 #1 skip extracting module files
 debug_mmc_usbboot=1  #mmc cannot boot. 1 to boot off a usb reader
+
+#command line: have to choose usb or mmc
+if [ "$1" == "" ]; then
+  echo "ERROR: must have mmc or usb target device on command line"
+  exit 1
+elif [ "$1" == "mmc" -o "$1" == "sd" ]; then
+  cfg_install_to=/dev/mmcblk0
+elif [ "$1" == "usb" ]; then
+  cfg_install_to=/dev/sdb
+else
+  echo "ERROR: must have mmc or usb target on command line"
+  echo "       unknown target device"
+  exit 1
+fi
 
 fw_type="`crossystem mainfw_type`"
 if [ ! "$fw_type" = "developer" ]
@@ -29,7 +43,8 @@ if [ ! "$fw_type" = "developer" ]
     echo -e "\nOh good. You're running a developer BIOS...\n"
 fi
 
-# hwid lets us know if this is a Mario (Cr-48), Alex (Samsung Series 5), ZGB (Acer), etc
+# hwid lets us know if this is a Mario (Cr-48), Alex (Samsung Series 5), 
+#                                               ZGB (Acer), etc
 hwid="`crossystem hwid`"
     #PARROT PUFFIN F-D 0168
 
@@ -39,12 +54,13 @@ chromebook_arch="`uname -m`"
     #i686
 if [ ! "$chromebook_arch" = "x86_64" ]
 then
-  echo -e "This version of Chrome OS isn't 64-bit. We'll use an unofficial Chromium OS kernel to get around this...\n"
+  echo -e "  This version of Chrome OS isn't 64-bit."
+  echo -e "  We'll use an unofficial Chromium OS kernel to get around this...\n"
 else
-  echo -e "and you're running a 64-bit version of Chrome OS! That's just dandy!\n"
+  echo -e "    and you're running a 64-bit version of Chrome OS! Good!\n"
 fi
 
-read -p "Press [Enter] to continue..."
+read -p "  Press [Enter] to continue..."
 
 powerd_status="`initctl status powerd`"
 if [ ! "$powerd_status" = "powerd stop/waiting" ]
@@ -62,30 +78,7 @@ fi
 
 setterm -blank 0
 
-if [ "$cfg_install_to" != "" ]; then
-  target_disk=$cfg_install_to
-  echo "Got ${target_disk} as target drive"
-  echo ""
-  echo "WARNING! All data on this device will be wiped out! Continue at your own risk!"
-  echo ""
-  read -p "Press [Enter] to install ChrUbuntu on ${target_disk} or CTRL+C to quit"
-
-  ext_size="`blockdev --getsz ${target_disk}`"
-  aroot_size=$((ext_size - 65600 - 33))
-  parted --script ${target_disk} "mktable gpt"
-  cgpt create ${target_disk} 
-  cgpt add -i 6 -b 64 -s 32768 -S 1 -P 5 -l KERN-A -t "kernel" ${target_disk}
-  cgpt add -i 7 -b 65600 -s $aroot_size -l ROOT-A -t "rootfs" ${target_disk}
-  sync
-  blockdev --rereadpt ${target_disk}
-  partprobe ${target_disk}
-  crossystem dev_boot_usb=1
-else
-    target_disk="`rootdev -d -s`"
-    echo "ERROR: not allowed to install to $target_disk"
-    exit
-fi
-
+# copy files from usb to the repo on stateful partition
 target_repo=/mnt/stateful_partition/ubuntu
 if [ ! -d $target_repo ]; then
   mkdir $target_repo
@@ -119,6 +112,8 @@ if [ $debug_skip_copy -eq 0 ]; then
         echo "ERROR: no ubuntu/data dir on usb drive /dev/sdb1"
         exit 1
     fi
+    umount /dev/sdb1                > /dev/null 2>&1
+    umount /dev/sdb                 > /dev/null 2>&1
 else
     if [ ! -d data ]; then 
         echo "ERROR: no ubuntu/data dir the stateful_partition partition"
@@ -126,21 +121,65 @@ else
     fi
 fi
 
+
+if [ "$cfg_install_to" != "" ]; then
+  target_disk=$cfg_install_to
+  echo ""
+  echo "Got  ${target_disk}  as the target device"
+  echo ""
+  echo "  WARNING! All data on this device will be wiped out!"
+  echo "  WARNING! Continue at your own risk!"
+  echo "  WARNING! Or hit  CTRL+C  now to quit!"
+  echo ""
+  read -p "  Press [Enter] to install ChrUbuntu on ${target_disk} ..."
+
+  echo "Creating cgpt partitions"
+  ext_size="`blockdev --getsz ${target_disk}`"
+  aroot_size=$((ext_size - 65600 - 33))
+  parted --script ${target_disk} "mktable gpt"
+  cgpt create ${target_disk} 
+  cgpt add -i 6 -b 64 -s 32768 -S 1 -P 5 -l KERN-A -t "kernel" ${target_disk}
+  cgpt add -i 7 -b 65600 -s $aroot_size -l ROOT-A -t "rootfs" ${target_disk}
+  if [ $? -ne 0 ]; then
+    echo "ERROR: cgpt command failed on $target_disk"
+    exit 1
+  fi
+  sync
+  blockdev --rereadpt ${target_disk}
+  partprobe ${target_disk}
+  crossystem dev_boot_usb=1
+else
+    target_disk="`rootdev -d -s`"
+    echo "ERROR: not allowed to install to $target_disk"
+    exit
+fi
+
 if [[ "${target_disk}" =~ "mmcblk" ]]; then
   target_rootfs="${target_disk}p7"
   target_kern="${target_disk}p6"
+    if grep mmcblk /proc/mounts ; then
+        echo "ERROR: mmcblk mounted"
+        exit 1
+    fi
+elif [[ "${target_disk}" =~ "sdb" ]]; then
+  target_rootfs="${target_disk}7"
+  target_kern="${target_disk}6"
+    if grep sdb /proc/mounts ; then
+        echo "ERROR: usb (sdb) mounted"
+        exit 1
+    fi
 else
-    echo "ERROR: not allowed to install to non-mmcblk device"
+    echo "ERROR: not allowed to install to non-mmcblk or non-usb device"
     exit 1
 fi
 
-echo "Target Kernel Partition: $target_kern  Target Root FS: ${target_rootfs}"
-if grep mmcblk /proc/mounts ; then
-    echo "ERROR: mmcblk mounted"
-    exit 1
-fi
+echo ""
+echo "Target Kernel Partition: $target_kern"
+echo "Target Root FS:          ${target_rootfs}"
+echo ""
+read -p "  Press [Enter] to write to target device ..."
 
-# Download and copy ubuntu root filesystem, keep track of successful parts so we can resume
+# copy ubuntu root filesystem, keep track of successful parts so we can resume
 SEEK=0
 FILESIZE=102400
 for one in a b; do
@@ -183,6 +222,8 @@ for one in a b; do
     fi
         $get_cmd | bunzip2 -c | dd bs=1024 seek=$SEEK of=${target_rootfs} status=noxfer > /dev/null 2>&1
         current_sha1=`dd if=${target_rootfs} bs=1024 skip=$SEEK count=$FILESIZE status=noxfer | sha1sum | awk '{print $1}'`
+        echo "  current: $correct_sha1"
+        echo "   corect: $current_sha1"
         if [ "$correct_sha1" = "$current_sha1" ]; then
             echo -e "\n$FILENAME was written to ${target_rootfs} correctly...\n\n"
         else
@@ -204,6 +245,7 @@ if [ ! -d /tmp/urfs/usr/bin ]; then
     exit 1
 else
     echo "Mounted  ${target_rootfs}  to  /tmp/urfs"
+    df -h /tmp/urfs
 fi
 cp /usr/bin/cgpt /tmp/urfs/usr/bin/
 chmod a+rx /tmp/urfs/usr/bin/cgpt
@@ -273,7 +315,9 @@ else # Otherwise we'll download a custom-built non-official Chromium OS kernel
                 --config kernel-config \
                 --oldblob ${use_kernfs}_oldblb
     if [ $debug_skip_modules -eq 0 ]; then
-        tar xjvvf $model-x64-modules.tar.bz2 --directory /tmp/urfs/lib/modules
+        #tar xjvvf $model-x64-modules.tar.bz2 --directory /tmp/urfs/lib/modules
+        echo "Extracting modules to target  /lib/modules"
+        tar xjf $model-x64-modules.tar.bz2 --directory /tmp/urfs/lib/modules
     fi
 fi
 umount /tmp/urfs
@@ -293,7 +337,7 @@ echo "Set cgpt for disk ${target_disk}"
 cgpt add -i 6 -P 5 -T 1 ${target_disk}
 
 if [ $debug_mmc_usbboot -ne 0 ]; then
-    echo "Acer C7 cannot boot off mmc. Use a USB card reader to boot."
+    echo "Acer C7 cannot boot off mmc. Use a USB card reader to boot mmc."
 fi
 # reboot
 echo "reboot now"
