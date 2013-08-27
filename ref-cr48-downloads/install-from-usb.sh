@@ -10,6 +10,11 @@
 cfg_install_to=/dev/mmcblk0
 cfg_install_from=/dev/sdb1
 
+debug_skip_copy=1    #1 skip copy from usb to /mnt/stateful_partition/ubuntu
+debug_skip_rootfs=1  #1 skip writing rootfs partition from files
+debug_skip_modules=1 #1 skip extracting module files
+debug_mmc_usbboot=1  #mmc cannot boot. 1 to boot off a usb reader
+
 fw_type="`crossystem mainfw_type`"
 if [ ! "$fw_type" = "developer" ]
   then
@@ -88,30 +93,37 @@ fi
 
 cd $target_repo
 
-# try mounting a USB / SD Card if it's there...
-if [ ! -d /tmp/usb_files ]; then
-    mkdir /tmp/usb_files
-fi
+if [ $debug_skip_copy -eq 0 ]; then
+    # try mounting a USB / SD Card if it's there...
+    if [ ! -d /tmp/usb_files ]; then
+        mkdir /tmp/usb_files
+    fi
 
-umount /dev/sdb1                > /dev/null 2>&1
-mount  /dev/sdb1 /tmp/usb_files > /dev/null 2>&1
+    umount /dev/sdb1                > /dev/null 2>&1
+    mount  /dev/sdb1 /tmp/usb_files > /dev/null 2>&1
 
-if [ ! -d /tmp/usb_files/ubuntu ]; then 
-    echo "ERROR: no ubuntu dir on usb drive /dev/sdb1"
-    exit 1
-fi
+    if [ ! -d /tmp/usb_files/ubuntu ]; then 
+        echo "ERROR: no ubuntu dir on usb drive /dev/sdb1"
+        exit 1
+    fi
 
-# Copy /tmp/usb_files/ubuntu (.sha1 and foo.6 files) to SSD if they're there
-if [ -d /tmp/usb_files/ubuntu ]; then
-    if [ ! -d $target_repo/data ]; then
-        echo "Copying all ubuntu/* files to stateful_partition/ubuntu/"
-        cp -rf /tmp/usb_files/ubuntu/* $target_repo/
-    else 
-        echo "Using ubuntu/* files in stateful_partition/ubuntu/"
+    # Copy /tmp/usb_files/ubuntu (.sha1 and foo.6 files) to SSD if they're there
+    if [ -d /tmp/usb_files/ubuntu ]; then
+        if [ ! -d $target_repo/data ]; then
+            echo "Copying all ubuntu/* files to stateful_partition/ubuntu/"
+            cp -rf /tmp/usb_files/ubuntu/* $target_repo/
+        else 
+            echo "Using ubuntu/* files in stateful_partition/ubuntu/"
+        fi
+    else
+        echo "ERROR: no ubuntu/data dir on usb drive /dev/sdb1"
+        exit 1
     fi
 else
-    echo "ERROR: no ubuntu/data dir on usb drive /dev/sdb1"
-    exit 1
+    if [ ! -d data ]; then 
+        echo "ERROR: no ubuntu/data dir the stateful_partition partition"
+        exit 1
+    fi
 fi
 
 if [[ "${target_disk}" =~ "mmcblk" ]]; then
@@ -128,19 +140,18 @@ if grep mmcblk /proc/mounts ; then
     exit 1
 fi
 
-debug_skip_rootfs=1
 # Download and copy ubuntu root filesystem, keep track of successful parts so we can resume
 SEEK=0
 FILESIZE=102400
 for one in a b; do
+    if [ $debug_skip_rootfs -ne 0 ]; then 
+        echo "DEBUG: Skip  $one  \$two "
+        break
+    fi
   for two in a b c d e f g h i j k l m n o p q r s t u v w x y z;   do
     # last file is smaller than the rest...
     if [ "$one$two" = "bz" ]; then
       FILESIZE=20480
-    fi
-    if [ $debug_skip_rootfs -ne 0 ]; then 
-        echo "DEBUG: Skip  $one  $two "
-        continue
     fi
     FILENAME="ubuntu-1204.bin$one$two.bz2"
       if [ ! -f $target_repo/data/$FILENAME.sha1 ]; then
@@ -198,7 +209,13 @@ cp /usr/bin/cgpt /tmp/urfs/usr/bin/
 chmod a+rx /tmp/urfs/usr/bin/cgpt
 echo "Copied  cgpt"
 
-echo "console=tty1 debug verbose root=${target_rootfs} rootwait rw lsm.module_locking=0" > kernel-config
+echo -n "console=tty1 debug verbose root=${target_rootfs} " >  kernel-config
+echo    "rootwait rw lsm.module_locking=0"                  >> kernel-config
+if [ $debug_mmc_usbboot -ne 0 ]; then
+ echo -n "console=tty1 debug verbose root=/dev/sdb7 "       >  kernel-config
+ echo    "rootwait rw lsm.module_locking=0"                 >> kernel-config
+fi
+
 if [ "$chromebook_arch" = "x86_64" ]  # We'll use the official Chrome OS kernel if it's x64
 then
     echo -e "\nError unexpected x86_64\n\n"
@@ -244,33 +261,40 @@ else # Otherwise we'll download a custom-built non-official Chromium OS kernel
           echo "ERROR: no modules file"
           exit 1
     fi
-  bunzip2 $model-x64-kernel-partition.bz2
-  use_kernfs="$model-x64-kernel-partition"
-  vbutil_kernel --repack $use_kernfs \
-    --keyblock /usr/share/vboot/devkeys/kernel.keyblock \
-    --version 1 \
-    --signprivate /usr/share/vboot/devkeys/kernel_data_key.vbprivk \
-    --config kernel-config
-  tar xjvvf $model-x64-modules.tar.bz2 --directory /tmp/urfs/lib/modules
+  
+    use_kernfs="$model-x64-kernel-partition"
+    if [ -f $use_kernfs ]; then rm $model-x64-kernel-partition; fi
+    bunzip2 $model-x64-kernel-partition.bz2
+    mv $use_kernfs ${use_kernfs}_oldblb
+    vbutil_kernel --repack $use_kernfs \
+                --keyblock /usr/share/vboot/devkeys/kernel.keyblock \
+                --version 1 \
+                --signprivate /usr/share/vboot/devkeys/kernel_data_key.vbprivk \
+                --config kernel-config \
+                --oldblob ${use_kernfs}_oldblb
+    if [ $debug_skip_modules -eq 0 ]; then
+        tar xjvvf $model-x64-modules.tar.bz2 --directory /tmp/urfs/lib/modules
+    fi
 fi
 umount /tmp/urfs
 
+echo "Writing kernel  $uer_kernfs  to  $target_kern"
 dd if=$use_kernfs of=${target_kern}
-
-
-
-
-
 
 # Resize sda7 in order to "grow" filesystem to user's selected size
 echo "Resize ${target_rootfs}"
-e2fsck -f ${target_rootfs}
-resize2fs -p ${target_rootfs}
+if [ $debug_skip_rootfs -eq 0 ]; then 
+    e2fsck -f ${target_rootfs}
+    resize2fs -p ${target_rootfs}
+fi
 
 #Set Ubuntu partition as top priority for next boot
 echo "Set cgpt for disk ${target_disk}"
 cgpt add -i 6 -P 5 -T 1 ${target_disk}
 
+if [ $debug_mmc_usbboot -ne 0 ]; then
+    echo "Acer C7 cannot boot off mmc. Use a USB card reader to boot."
+fi
 # reboot
 echo "reboot now"
 ##reboot
