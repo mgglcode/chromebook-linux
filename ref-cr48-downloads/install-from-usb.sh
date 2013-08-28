@@ -222,8 +222,6 @@ for one in a b; do
     fi
         $get_cmd | bunzip2 -c | dd bs=1024 seek=$SEEK of=${target_rootfs} status=noxfer > /dev/null 2>&1
         current_sha1=`dd if=${target_rootfs} bs=1024 skip=$SEEK count=$FILESIZE status=noxfer | sha1sum | awk '{print $1}'`
-        echo "  current: $correct_sha1"
-        echo "   corect: $current_sha1"
         if [ "$correct_sha1" = "$current_sha1" ]; then
             echo -e "\n$FILENAME was written to ${target_rootfs} correctly...\n\n"
         else
@@ -246,6 +244,7 @@ if [ ! -d /tmp/urfs/usr/bin ]; then
 else
     echo "Mounted  ${target_rootfs}  to  /tmp/urfs"
     df -h /tmp/urfs
+            #mario rootfs 5.0G total, 3.1G used, 1.7G availab.e
 fi
 cp /usr/bin/cgpt /tmp/urfs/usr/bin/
 chmod a+rx /tmp/urfs/usr/bin/cgpt

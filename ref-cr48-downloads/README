@@ -5,6 +5,7 @@ Notes:
 download-cr48-data.sh
 =======================
   downloaded the data in 440 seconds in one test
+  the files contain an original 5.0G drive, on which 3.1G used, 1.7G available. 
 
 verify-cr48-data.sh
 =======================
