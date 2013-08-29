@@ -282,6 +282,32 @@ date
 # reboot
 echo ""
 echo "reboot now"
+
+echo ""
+echo "Things to do with the minimal fedora 19: "
+echo "  Install pkgs: openssh-server, net-tools, system-config-firewall-tui"
+echo "  Disable fw:   systemctl stop firewalld.service"
+echo ""
+echo "  Install lxde: yum install @lxde-desktop"
+echo "  Set LXDE as default for LXDM: "
+echo "      cd /etc/systemd/system; rm display-manager.service ;"
+echo "      ln -s /usr/lib/systemd/system/lxdm.service display-manager.service"
+
+echo ""
+echo "  Install more packages for x: "
+echo "      yum install xorg-x11-server-Xorg xterm xorg-x11-xinit xorg-x11-drv-evdev"
+echo "    (If on a laptop where the touchpad works with synaptics, add xorg-x11-drv-synaptics)"
+echo "  Install a window manager, e.g. yum install openbox. dbus-x11 too."
+
+echo ""
+echo "  Or get a new image from scratch to have a minimal Fedora with only LXDE:"
+echo "    - use Netinstall image"
+echo "    - chose "minimal" and "customise now", then only 4 bundle of packages: "
+echo "      LXDE and Window managers, and in base system Fonts and X Window System"
+
+echo ""
+echo "sleep 10"
+sleep 10
 echo ""
 ##reboot
 
