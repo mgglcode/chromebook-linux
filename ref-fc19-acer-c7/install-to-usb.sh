@@ -16,9 +16,11 @@ debug_skip_mkfs=0    #1 skip writing rootfs partition from files
 debug_skip_rootfs=0  #1 skip writing rootfs partition from files
 debug_skip_modules=0 #1 skip extracting module files
 debug_mmc_usbboot=1  #mmc cannot boot. 1 to boot off a usb reader
+debug_show_mkfs=0    #1 skip showing mkfs result
 
 project_name=fc19acerc7
-rootfsfile=fc19minimal.tgz
+rootfsfile=fc19lxde.tgz
+#rootfsfile=fc19minimal.tgz
 
 #command line: have to choose usb or mmc
 case "$1" in
@@ -31,6 +33,30 @@ case "$1" in
     echo "       unknown target device"
     exit 1
 esac
+
+    function waitforflush() {
+      fincnt=0
+      finstart=`date`
+      while true
+      do
+          retv=`top -n1 -b | grep 'flush' | egrep -v 'S [ ]*0'`
+          rets=`echo -n $retv`
+          if [ "$retv" == "" ]; then 
+            fincnt=$(($fincnt + 1))
+            #echo "  " found S0 ... $fincnt
+          else
+            fincnt=0
+          fi
+          if [ $fincnt -gt 5 ]; then 
+            echo "  " found S0 ... many times. idle. 
+            break
+          fi
+          sleep 1
+      done
+      finfinish=`date`
+      echo "  waitforflush started   $finstart"
+      echo "  waitforflush finished  $finfinish"
+    }
 
 echo ""
 fw_type="`crossystem mainfw_type`"
@@ -136,6 +162,7 @@ fi
     read -p "  Press [Enter] to install fc19 on ${target_disk} ..."
 
 echo ""
+installstarttime=`date`
 date
     echo "Creating cgpt partitions"
     ext_size="`blockdev --getsz ${target_disk}`"
@@ -177,7 +204,11 @@ echo "    Target Root FS:          ${target_rootfs}"
 
 echo "Creating ext4 fs on ${target_rootfs}..."
 if [ $debug_skip_mkfs -eq 0 ]; then 
-    mkfs -t ext4 ${target_rootfs}
+    if [ $debug_show_mkfs -eq 0 ] ; then 
+        mkfs -t ext4 ${target_rootfs}  > /dev/null
+    else
+        time mkfs -t ext4 ${target_rootfs}
+    fi
 fi
 
 #Mount rootfs and copy cgpt + modules over
@@ -188,8 +219,12 @@ fi
 mount -t ext4 ${target_rootfs} /tmp/urfs
 df -h /tmp/urfs
 
-echo "Copying rootfs..."
-tar zxf $rootfsfile --directory /tmp/urfs
+echo -n "Copying rootfs ... (may take 20 minutes or longer) ...  "
+    date
+    tar zxf $rootfsfile --directory /tmp/urfs
+echo -n '  waitforflush ... (may take 20 minutes or longer) ...  '
+    date
+waitforflush
 
 echo "Copying modules, firmware and binaries to ${target_rootfs}..."
 if [ ! -d /tmp/urfs/usr/bin ]; then
@@ -262,6 +297,7 @@ echo "Modifying fstab..."
                                          >> /tmp/urfs/root/note-install-source
     echo "    http://<site>.com/<path>/releases/19/Everything/i386/os/ " \
                                          >> /tmp/urfs/root/note-install-source
+
 echo "Sync ..."
     sync
 
@@ -283,11 +319,15 @@ if [ $debug_mmc_usbboot -ne 0 ]; then
     echo "Acer C7 cannot boot off mmc. Use a USB card reader to boot mmc."
 fi
 
-date
+installfinishtime=`date`
+echo "  Installation started at  $installstarttime"
+echo "  Installation finished at $installfinishtime"
 
 # reboot
 echo ""
 echo "reboot now"
+exit 0
+
 
 echo ""
 echo "Things to do with the minimal fedora 19: "
@@ -318,4 +358,6 @@ echo "sleep 10"
 sleep 10
 echo ""
 ##reboot
+
+exit 0
 
