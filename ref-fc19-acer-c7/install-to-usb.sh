@@ -18,6 +18,7 @@ debug_skip_modules=0 #1 skip extracting module files
 debug_mmc_usbboot=1  #mmc cannot boot. 1 to boot off a usb reader
 
 project_name=fc19acerc7
+rootfsfile=fc19minimal.tgz
 
 #command line: have to choose usb or mmc
 case "$1" in
@@ -99,7 +100,7 @@ if [ $debug_skip_copy -eq 0 ]; then
 
     # Copy /tmp/usb_files/$project_name/* to stateful partition
     if [ -d /tmp/usb_files/$project_name ]; then
-        if [ ! -f $target_repo/fc19minimal.tgz ]; then
+        if [ ! -f $target_repo/$rootfsfile ]; then
             echo "Copying all $project_name/* files to $target_repo/"
             cp -rf /tmp/usb_files/$project_name/* $target_repo/
         else 
@@ -112,8 +113,8 @@ if [ $debug_skip_copy -eq 0 ]; then
     umount /dev/sdb1                > /dev/null 2>&1
     umount /dev/sdb                 > /dev/null 2>&1
 else
-    if [ ! -f fc19minimal.tgz ]; then 
-        echo "ERROR: no fc19minimal.tgz file in the target repo"
+    if [ ! -f $rootfsfile ]; then 
+        echo "ERROR: no $rootfsfile file in the target repo"
         exit 1
     fi
 fi
@@ -188,7 +189,7 @@ mount -t ext4 ${target_rootfs} /tmp/urfs
 df -h /tmp/urfs
 
 echo "Copying rootfs..."
-tar zxf fc19minimal.tgz --directory /tmp/urfs
+tar zxf $rootfsfile --directory /tmp/urfs
 
 echo "Copying modules, firmware and binaries to ${target_rootfs}..."
 if [ ! -d /tmp/urfs/usr/bin ]; then
@@ -256,6 +257,11 @@ echo "Copying modules to /lib/modules..."
 echo "Modifying fstab..."
     mv /tmp/urfs/etc/fstab /tmp/urfs/etc/fstab-orig-inst
     echo "/dev/sdb7  /  ext4  defaults  0 0" > /tmp/urfs/etc/fstab
+    echo "fedora 19 install source: "    > /tmp/urfs/root/note-install-source
+    echo "    boot Fedora-19-i386-netinst.iso then use net path " \
+                                         >> /tmp/urfs/root/note-install-source
+    echo "    http://<site>.com/<path>/releases/19/Everything/i386/os/ " \
+                                         >> /tmp/urfs/root/note-install-source
 echo "Sync ..."
     sync
 
@@ -285,7 +291,9 @@ echo "reboot now"
 
 echo ""
 echo "Things to do with the minimal fedora 19: "
-echo "  Install pkgs: openssh-server, net-tools, system-config-firewall-tui"
+
+echo ""
+echo "  Install pkgs: tar net-tools openssh-server system-config-firewall-tui"
 echo "  Disable fw:   systemctl stop firewalld.service"
 echo ""
 echo "  Install lxde: yum install @lxde-desktop"
@@ -302,7 +310,7 @@ echo "  Install a window manager, e.g. yum install openbox. dbus-x11 too."
 echo ""
 echo "  Or get a new image from scratch to have a minimal Fedora with only LXDE:"
 echo "    - use Netinstall image"
-echo "    - chose "minimal" and "customise now", then only 4 bundle of packages: "
+echo "    - chose minimal and customise now, then only 4 bundle of packages: "
 echo "      LXDE and Window managers, and in base system Fonts and X Window System"
 
 echo ""
