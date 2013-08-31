@@ -5,7 +5,7 @@
 # verify against: fc19minimal-sha1
 
 
-tgt=fc19minimal.tgz
+tgt=fc19lxde.tgz
 
 flist=`cat conf-filelist | xargs`
 
