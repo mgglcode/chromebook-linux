@@ -10,13 +10,13 @@ for FILENAME in $flist ; do
     echo "  File: $FILENAME $FILENAME-sha1 "
     echo
 
-      if [ ! -f data-lxde/$FILENAME ]; then echo "ERROR: no file $FILENAME"; exit 1; fi
-      if [ ! -f data-lxde/$FILENAME-sha1 ]; then echo "ERROR: no file $FILENAME-sha1"; exit 1; fi
+      if [ ! -f $FILENAME ]; then echo "ERROR: no file $FILENAME"; exit 1; fi
+      if [ ! -f $FILENAME-sha1 ]; then echo "ERROR: no file $FILENAME-sha1"; exit 1; fi
 
     echo "  Local commit: "
     echo
 
-      git add data-lxde/$FILENAME data-lxde/$FILENAME-sha1
+      git add $FILENAME $FILENAME-sha1
       git commit -m "file $FILENAME $FILENAME-sha1"
 
     echo
